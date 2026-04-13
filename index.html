@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Reaction Time Task</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
+        #setup, #results { text-align: center; z-index: 10; }
+        #game-canvas { position: absolute; top: 0; left: 0; cursor: crosshair; display: none; }
+        .hidden { display: none; }
+        #circle { width: 50px; height: 50px; background-color: #ff4757; border-radius: 50%; position: absolute; display: none; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <div id="setup">
+        <h1>Reaction Time Experiment</h1>
+        <p>Enter your ID to begin (or leave blank for a random ID):</p>
+        <input type="text" id="participant-id" placeholder="Participant ID">
+        <button onclick="startExperiment()">Start Task</button>
+    </div>
+
+    <div id="circle"></div>
+
+    <div id="results" class="hidden">
+        <h2>Task Complete!</h2>
+        <p id="user-avg"></p>
+        <div style="width: 600px; height: 400px;">
+            <canvas id="rtChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // PASTE YOUR URL HERE [cite: 27]
+        const scriptURL = 'https://script.google.com/macros/s/AKfycbzPrzMQUMS5aGVMKVmr3wSLiIu77W-dgalqNKnCGGVOCtU94j_-d_cQHZu_20B21Uo/exec';
+        
+        let pID;
+        let trials = [];
+        let trialCount = 0;
+        let startTime;
+        const maxTrials = 10; // [cite: 33]
+
+        function startExperiment() {
+            // Get ID or assign random alphanumeric [cite: 28, 29]
+            pID = document.getElementById('participant-id').value || Math.random().toString(36).substring(2, 9);
+            document.getElementById('setup').classList.add('hidden');
+            nextTrial();
+        }
+
+        function nextTrial() {
+            if (trialCount < maxTrials) {
+                // Wait 500ms before showing the circle [cite: 32]
+                setTimeout(() => {
+                    const circle = document.getElementById('circle');
+                    const x = Math.random() * (window.innerWidth - 50);
+                    const y = Math.random() * (window.innerHeight - 50);
+                    
+                    circle.style.left = x + 'px';
+                    circle.style.top = y + 'px';
+                    circle.style.display = 'block';
+                    startTime = performance.now(); // Start timer
+                }, 500);
+            } else {
+                finishTask();
+            }
+        }
+
+        document.getElementById('circle').addEventListener('click', function() {
+            const rt = performance.now() - startTime; // [cite: 31]
+            this.style.display = 'none';
+            trialCount++;
+            
+            trials.push({
+                Participant_ID: pID,
+                Trial_Number: trialCount,
+                Reaction_Time: Math.round(rt)
+            });
+            
+            nextTrial();
+        });
+
+        function finishTask() {
+            document.getElementById('circle').style.display = 'none';
+            document.getElementById('results').classList.remove('hidden');
+            
+            // Send data to Google Sheets [cite: 34]
+            fetch(scriptURL, {
+                method: 'POST',
+                mode: 'no-cors', 
+                cache: 'no-cache',
+                body: JSON.stringify(trials)
+            });
+
+            showVisualization();
+        }
+
+        async function showVisualization() {
+            const userAvg = trials.reduce((a, b) => a + b.Reaction_Time, 0) / maxTrials; // [cite: 40]
+            document.getElementById('user-avg').innerText = `Your Average RT: ${Math.round(userAvg)}ms`;
+
+            // GET historical data [cite: 41]
+            const response = await fetch(scriptURL);
+            const historicalData = await response.json();
+
+            // Create Histogram using Chart.js [cite: 38, 42, 43]
+            const ctx = document.getElementById('rtChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: historicalData.map((_, i) => i),
+                    datasets: [{
+                        label: 'All Reaction Times (ms)',
+                        data: historicalData,
+                        backgroundColor: 'rgba(54, 162, 235, 0.5)'
+                    }, {
+                        label: 'Your Average',
+                        data: Array(historicalData.length).fill(userAvg),
+                        type: 'line',
+                        borderColor: 'red',
+                        borderWidth: 2,
+                        pointRadius: 0
+                    }]
+                }
+            });
+        }
+    </script>
+</body>
+</html>
